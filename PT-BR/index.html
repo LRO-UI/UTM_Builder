@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Construtor de UTM</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='7' width='18' height='18' transform='rotate(45 16 16)' fill='%233f6fa8' stroke='%23e7eaf0' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@400..900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    color-scheme:dark;
+    --bg:#0d0f14; --panel:#14171f; --panel-edge:#232732;
+    --blue:#3f6fa8; --blue2:#5c7f9e; --steel:#7c8698;
+    --ink:#e7eaf0; --ink-soft:#727c8c; --line:#252a35;
+    --danger:#c77a7a; --ok:#7fa88a; --warn:#c9a86a;
+    --font-ui:'Space Grotesk', system-ui, sans-serif;
+    --font-display:'Playfair Display', Georgia, serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
+  *{ box-sizing:border-box; }
+  [hidden]{ display:none !important; }
+  body{
+    margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font-family:var(--font-ui); display:flex; flex-direction:column; overflow:hidden;
+  }
+  header{
+    padding:18px 30px; border-bottom:4px double var(--blue2);
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap; flex:none;
+  }
+  header h1{ margin:0; font-family:var(--font-display); font-weight:800; font-size:1.5rem; letter-spacing:.02em; }
+  .count{ font-size:.72rem; color:var(--blue2); letter-spacing:.06em; font-variant-numeric:tabular-nums; }
+  .head-actions{ margin-left:auto; display:flex; gap:10px; }
+
+  .app{ display:flex; flex:1; min-height:0; }
+
+  /* Stage */
+  .stage{ flex:1 1 auto; min-width:0; padding:26px; display:flex; border-right:1px solid var(--line); }
+  .rail-frame{ position:relative; flex:1; display:flex; min-width:0; min-height:0; }
+  .rail-frame::before, .rail-frame::after{ content:''; position:absolute; pointer-events:none; z-index:2; }
+  .rail-frame::before{ inset:8px; border:1px solid rgba(231,234,240,.6); }
+  .rail-frame::after{ inset:13px; border:1px solid rgba(92,127,158,.35); }
+  .rail-d{
+    position:absolute; width:10px; height:10px; z-index:3;
+    background:var(--blue); border:2px solid var(--bg);
+    transform:translate(-50%,-50%) rotate(45deg);
+    box-shadow:0 0 0 1px rgba(231,234,240,.5);
+  }
+  .rail-d.tl{top:8px; left:8px;} .rail-d.tr{top:8px; left:calc(100% - 8px);}
+  .rail-d.bl{top:calc(100% - 8px); left:8px;} .rail-d.br{top:calc(100% - 8px); left:calc(100% - 8px);}
+
+  .preview{
+    flex:1; margin:22px; padding:16px 18px 30px; overflow:auto; min-width:0; min-height:0;
+    position:relative; z-index:4; display:flex; flex-direction:column; gap:28px;
+  }
+  .meta{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .state{ font-size:.74rem; letter-spacing:.06em; display:flex; align-items:center; gap:8px; }
+  .state i{ width:8px; height:8px; transform:rotate(45deg); display:block; background:var(--line); }
+  .state[data-s="ok"] i{ background:var(--ok); } .state[data-s="ok"]{ color:var(--ok); }
+  .state[data-s="warn"] i{ background:var(--warn); } .state[data-s="warn"]{ color:var(--warn); }
+  .state[data-s="err"] i{ background:var(--danger); } .state[data-s="err"]{ color:var(--danger); }
+  .dims{ font-size:.72rem; color:var(--blue2); font-variant-numeric:tabular-nums; letter-spacing:.06em; }
+
+  .url-box{
+    background:var(--panel); border:1px solid var(--line); padding:18px 18px 18px 20px; min-height:86px;
+    font-family:var(--font-mono); font-size:.95rem; line-height:1.65; overflow-wrap:anywhere;
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+    user-select:all;
+  }
+  .url-box .b{ color:var(--ink-soft); }
+  .url-box .k{ color:#8fb0d6; }
+  .url-box .v{ color:var(--ink); }
+  .url-box .t{ color:#c9a86a; }
+  .url-box .p{ color:#4d5563; }
+  .url-box.placeholder{ font-family:var(--font-ui); font-size:.88rem; color:var(--ink-soft); user-select:none; display:flex; align-items:center; }
+  .url-box.flash{ animation:flash .5s ease-out; }
+  @keyframes flash{ from{ border-color:var(--blue2); background:rgba(63,111,168,.18);} to{} }
+  @media (prefers-reduced-motion:reduce){ .url-box.flash{ animation:none; } }
+
+  .actions{ display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:8px; margin-top:10px; }
+
+  .cols{ display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:28px; }
+
+  .anat{ display:flex; flex-direction:column; }
+  .anat-row{ display:grid; grid-template-columns:118px 1fr; gap:4px 14px; padding:11px 0; border-top:1px solid var(--line); }
+  .anat-row:first-child{ border-top:none; padding-top:0; }
+  .anat-k{ font-family:var(--font-mono); font-size:.76rem; color:#8fb0d6; padding-top:2px; }
+  .anat-v{ font-family:var(--font-mono); font-size:.84rem; color:var(--ink); overflow-wrap:anywhere; }
+  .anat-v.empty{ font-family:var(--font-ui); color:#4d5563; font-size:.8rem; }
+  .anat-v .t{ color:#c9a86a; }
+  .anat-d{ grid-column:2; font-size:.72rem; color:var(--ink-soft); line-height:1.45; }
+
+  .channel{
+    background:var(--panel); border:1px solid var(--line); padding:16px 16px 14px;
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+  }
+  .channel .lbl{ font-size:.7rem; color:var(--ink-soft); letter-spacing:.04em; }
+  .channel .name{ font-family:var(--font-display); font-weight:700; font-size:1.35rem; margin:4px 0 8px; }
+  .channel .name.bad{ color:var(--warn); }
+  .channel p{ margin:0; font-size:.76rem; line-height:1.5; color:var(--ink-soft); }
+
+  ul.checks-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+  ul.checks-list li{ display:grid; grid-template-columns:14px 1fr; gap:10px; padding:10px 0; border-top:1px solid var(--line); font-size:.78rem; line-height:1.5; color:#c3c9d4; }
+  ul.checks-list li:first-child{ border-top:none; padding-top:2px; }
+  ul.checks-list li::before{ content:''; width:7px; height:7px; transform:rotate(45deg); margin:6px 0 0 3px; background:var(--blue2); }
+  ul.checks-list li.err::before{ background:var(--danger); }
+  ul.checks-list li.warn::before{ background:var(--warn); }
+  ul.checks-list li.ok::before{ background:var(--ok); }
+  ul.checks-list code{ font-family:var(--font-mono); font-size:.74rem; color:var(--ink); }
+
+  .tbl-wrap{ overflow-x:auto; border:1px solid var(--line); }
+  table{ width:100%; border-collapse:collapse; font-size:.76rem; }
+  th{ text-align:left; font-weight:500; color:var(--ink-soft); font-size:.68rem; letter-spacing:.06em; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--panel); white-space:nowrap; }
+  td{ padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:middle; color:#c3c9d4; }
+  tr:last-child td{ border-bottom:none; }
+  td.mono{ font-family:var(--font-mono); font-size:.72rem; color:var(--ink); }
+  td.url{ max-width:420px; overflow-wrap:anywhere; }
+  td.act{ white-space:nowrap; text-align:right; }
+  .lib-bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  .lib-bar input{ flex:1; min-width:160px; }
+  .lib-empty{ font-size:.8rem; color:var(--ink-soft); padding:22px; text-align:center; border:1px dashed var(--line); line-height:1.5; }
+
+  button.mini{
+    background:transparent; border:1px solid var(--line); color:var(--ink-soft);
+    font-family:var(--font-ui); font-size:.68rem; letter-spacing:.06em; padding:6px 10px; cursor:pointer;
+  }
+  button.mini:hover{ color:var(--ink); border-color:var(--blue2); }
+  button.mini.done{ color:var(--ok); border-color:var(--ok); }
+  button.mini.danger:hover{ color:#e3b4b4; border-color:var(--danger); }
+  button.mini:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+
+  /* Side */
+  .side{
+    flex:0 0 380px; min-width:0; padding:26px 26px 30px;
+    display:flex; flex-direction:column; gap:26px; overflow:auto;
+  }
+  .group-title{
+    display:flex; align-items:center; gap:10px;
+    text-transform:uppercase; letter-spacing:.26em; font-size:.66rem;
+    color:var(--ink-soft); margin-bottom:12px;
+  }
+  .group-title::before{ content:''; width:6px; height:6px; background:var(--blue); transform:rotate(45deg); flex:none; }
+  .group-title::after{ content:''; flex:1; height:3px; border-top:1px solid var(--blue); border-bottom:1px solid var(--blue2); }
+  .hint{ font-size:.7rem; color:var(--ink-soft); line-height:1.5; margin-top:8px; }
+  .note{
+    font-size:.72rem; color:#c3c9d4; line-height:1.5; margin-top:12px; padding:10px 12px;
+    border-left:2px solid var(--blue); background:rgba(63,111,168,.08);
+  }
+
+  .fld{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .fld:last-child{ margin-bottom:0; }
+  .fld-top{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .fld-top label{ font-size:.8rem; color:var(--ink); }
+  .fld-top code{ font-family:var(--font-mono); font-size:.68rem; color:#4d5563; }
+  .fld-top .req{ font-size:.64rem; color:var(--blue2); letter-spacing:.06em; }
+  input[type=text], input[type=url], input[type=month], input[type=search], textarea, select{
+    width:100%; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--font-ui); font-size:.84rem; padding:9px 10px; border-radius:0; outline:none;
+  }
+  input:focus, textarea:focus, select:focus{ border-color:var(--blue2); }
+  input[readonly]{ color:var(--ink-soft); background:var(--bg); }
+  input.mono, textarea.mono{ font-family:var(--font-mono); font-size:.8rem; }
+  textarea{ resize:vertical; min-height:96px; line-height:1.5; }
+  .fhint{ font-size:.68rem; color:var(--ink-soft); line-height:1.4; min-height:1em; }
+  .fhint.changed{ color:var(--warn); }
+  .fhint code{ font-family:var(--font-mono); color:var(--ink); }
+
+  .parts{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; padding:14px; border:1px solid var(--line); background:rgba(20,23,31,.5); }
+  .parts .fld{ margin-bottom:0; }
+  .parts .fld-top label{ font-size:.72rem; color:var(--ink-soft); }
+  .parts .full{ grid-column:1 / -1; }
+  .parts .built{ grid-column:1 / -1; font-family:var(--font-mono); font-size:.74rem; color:var(--ink); padding-top:6px; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+
+  .preset-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  button.tool{
+    --c:var(--blue2);
+    border:1px solid var(--line); background:
+      linear-gradient(var(--c),var(--c)) top left/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) top left/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) top right/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) top right/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom left/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom left/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom right/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom right/1px 8px no-repeat,
+      var(--panel);
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+    color:var(--ink); font-family:var(--font-ui); font-size:.72rem;
+    letter-spacing:.04em; padding:11px 6px; cursor:pointer;
+  }
+  button.tool:hover{ --c:#fff; }
+  button.tool:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.tool.active{ --c:var(--blue); background-color:rgba(63,111,168,.18); color:#fff; }
+  button.tool.done{ --c:var(--ok); color:var(--ok); }
+  .seg{ display:grid; gap:6px; }
+  .seg.c2{ grid-template-columns:repeat(2,1fr); }
+  .seg.c3{ grid-template-columns:repeat(3,1fr); }
+
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip{
+    background:var(--bg); border:1px solid var(--line); color:#c9a86a; font-family:var(--font-mono); font-size:.7rem;
+    padding:5px 8px; cursor:pointer;
+  }
+  .chip:hover{ border-color:#c9a86a; }
+  .chip:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+
+  .checks{ display:flex; flex-direction:column; gap:10px; }
+  .check{ display:flex; align-items:flex-start; gap:9px; font-size:.8rem; color:var(--ink-soft); cursor:pointer; line-height:1.35; }
+  .check input{ accent-color:var(--blue); width:14px; height:14px; margin:2px 0 0; flex:none; }
+  .check:has(input:checked){ color:var(--ink); }
+  .check small{ display:block; font-size:.68rem; color:var(--ink-soft); margin-top:2px; }
+  .sub{ font-size:.7rem; color:var(--ink-soft); margin:14px 0 8px; letter-spacing:.04em; }
+
+  button.generate{
+    width:100%; background:var(--blue); border:1px solid var(--blue2); color:#fff;
+    font-family:var(--font-ui); font-size:.72rem; text-transform:uppercase; letter-spacing:.2em;
+    padding:14px 10px; cursor:pointer;
+    box-shadow:inset 0 0 0 3px var(--blue), inset 0 0 0 4px rgba(231,234,240,.35);
+  }
+  button.generate:hover{ background:#4a7cb8; }
+  button.generate:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.generate:disabled, button.tool:disabled{ opacity:.4; cursor:not-allowed; }
+  button.generate.done{ background:#4f7d5d; border-color:var(--ok); box-shadow:inset 0 0 0 3px #4f7d5d, inset 0 0 0 4px rgba(231,234,240,.35); }
+  button.reset{
+    width:100%; margin-top:8px; background:transparent; border:1px solid var(--line);
+    color:var(--ink-soft); font-family:var(--font-ui); font-size:.68rem; text-transform:uppercase;
+    letter-spacing:.2em; padding:11px 10px; cursor:pointer;
+  }
+  button.reset:hover{ color:var(--ink); border-color:var(--blue2); }
+  button.reset:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+
+  .toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:20;
+    background:var(--panel); border:1px solid var(--blue2); color:var(--ink);
+    font-size:.76rem; letter-spacing:.03em; padding:10px 16px; max-width:90vw;
+    opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .toast.show{ opacity:1; }
+  .toast.err{ border-color:var(--danger); color:#e3b4b4; }
+
+  @media (max-width:1180px){ .cols{ grid-template-columns:1fr; } }
+  @media (max-width:860px){
+    body{ height:auto; overflow:auto; }
+    .app{ flex-direction:column-reverse; }
+    .stage{ border-right:none; border-top:1px solid var(--line); padding:14px; }
+    .preview{ margin:22px 18px; overflow:visible; }
+    .side{ flex:none; padding:24px 20px; overflow:visible; }
+    header{ padding:16px 20px; }
+    .actions{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Construtor de UTM</h1>
+  <span class="count" id="count"></span>
+  <div class="head-actions">
+    <button class="tool" id="btnResetAll" style="padding:11px 16px">Começar um link novo</button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="stage">
+    <div class="rail-frame">
+      <div class="rail-d tl"></div><div class="rail-d tr"></div>
+      <div class="rail-d bl"></div><div class="rail-d br"></div>
+      <div class="preview">
+
+        <section>
+          <div class="meta" style="margin-bottom:12px">
+            <div class="state" id="state" data-s="" aria-live="polite"><i></i><span id="stateLabel"></span></div>
+            <div class="dims" id="len"></div>
+          </div>
+          <div class="url-box placeholder" id="urlBox">Informe o endereço da página e a origem, a mídia e a campanha para ver seu link aqui.</div>
+          <div class="actions">
+            <button class="generate" id="btnCopy">Copiar link</button>
+            <button class="tool" id="btnCopyParams" title="Para o campo de parâmetros de URL da Meta ou o sufixo do URL final do Google Ads">Copiar só os parâmetros</button>
+            <button class="tool" id="btnSave">Salvar na biblioteca</button>
+          </div>
+        </section>
+
+        <div class="cols">
+          <section>
+            <div class="group-title">Anatomia do link</div>
+            <div class="anat" id="anat"></div>
+          </section>
+          <section>
+            <div class="group-title">Canal no GA4</div>
+            <div class="channel" id="channel"></div>
+            <div class="group-title" style="margin-top:24px">Verificações</div>
+            <ul class="checks-list" id="checks"></ul>
+          </section>
+        </div>
+
+        <section id="bulkSec" hidden>
+          <div class="group-title">Variações</div>
+          <div class="lib-bar">
+            <span class="dims" id="bulkCount" style="flex:1"></span>
+            <button class="mini" id="bulkCopy">Copiar todos</button>
+            <button class="mini" id="bulkSave">Salvar todos na biblioteca</button>
+            <button class="mini" id="bulkCsv">Baixar CSV</button>
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th id="bulkHead">utm_content</th><th>Link</th><th></th></tr></thead><tbody id="bulkBody"></tbody></table></div>
+        </section>
+
+        <section>
+          <div class="group-title">Biblioteca</div>
+          <div class="lib-bar">
+            <input type="search" id="libSearch" placeholder="Buscar links salvos" aria-label="Buscar links salvos">
+            <button class="mini" id="libCsv">Baixar CSV</button>
+            <button class="mini danger" id="libClear">Limpar biblioteca</button>
+          </div>
+          <div id="libWrap"></div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div>
+      <div class="group-title">Destino</div>
+      <div class="fld">
+        <div class="fld-top"><label for="base">Endereço da página</label><span class="req">Obrigatório</span></div>
+        <input type="url" id="base" class="mono" placeholder="https://seusite.com.br/oferta" autocomplete="off" spellcheck="false">
+        <div class="fhint" id="h-base">A página em que a pessoa cai depois de clicar.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-title">Canal</div>
+      <div class="preset-grid" id="presets"></div>
+      <div class="note" id="presetNote" hidden></div>
+      <div id="dynWrap" hidden>
+        <button class="reset" id="btnDyn">Preencher com valores dinâmicos</button>
+        <div class="chips" id="chips"></div>
+        <div class="hint">Clique em um valor para inserir no último campo selecionado. A plataforma troca pelo nome ou ID real no momento do clique.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-title">Parâmetros</div>
+      <div class="fld">
+        <div class="fld-top"><label for="f-source">Origem</label><code>utm_source</code></div>
+        <input type="text" id="f-source" data-p="source" list="dl-source" placeholder="facebook, google, newsletter" autocomplete="off" spellcheck="false">
+        <div class="fhint" id="h-source"></div>
+      </div>
+      <div class="fld">
+        <div class="fld-top"><label for="f-medium">Mídia</label><code>utm_medium</code></div>
+        <input type="text" id="f-medium" data-p="medium" list="dl-medium" placeholder="paid_social, cpc, email" autocomplete="off" spellcheck="false">
+        <div class="fhint" id="h-medium"></div>
+      </div>
+      <div class="fld">
+        <div class="fld-top"><label for="f-campaign">Campanha</label><code>utm_campaign</code></div>
+        <input type="text" id="f-campaign" data-p="campaign" placeholder="black-friday-2026" autocomplete="off" spellcheck="false">
+        <label class="check" style="margin-top:4px"><input type="checkbox" id="useParts"> Montar o nome pela nossa convenção de nomenclatura</label>
+        <div class="parts" id="parts" hidden>
+          <div class="fld"><div class="fld-top"><label for="p-brand">Cliente ou marca</label></div><input type="text" id="p-brand" data-part="brand" placeholder="acme"></div>
+          <div class="fld"><div class="fld-top"><label for="p-objective">Objetivo</label></div><input type="text" id="p-objective" data-part="objective" list="dl-objective" placeholder="leads"></div>
+          <div class="fld"><div class="fld-top"><label for="p-funnel">Etapa do funil</label></div><input type="text" id="p-funnel" data-part="funnel" list="dl-funnel" placeholder="tofu"></div>
+          <div class="fld"><div class="fld-top"><label for="p-offer">Oferta ou produto</label></div><input type="text" id="p-offer" data-part="offer" placeholder="teste-gratis"></div>
+          <div class="fld"><div class="fld-top"><label for="p-audience">Público</label></div><input type="text" id="p-audience" data-part="audience" list="dl-audience" placeholder="lookalike"></div>
+          <div class="fld"><div class="fld-top"><label for="p-geo">Localidade</label></div><input type="text" id="p-geo" data-part="geo" placeholder="sp"></div>
+          <div class="fld full"><div class="fld-top"><label for="p-date">Mês</label></div><input type="month" id="p-date" data-part="date"></div>
+          <div class="built" id="built"></div>
+        </div>
+        <div class="fhint" id="h-campaign"></div>
+      </div>
+      <div class="fld">
+        <div class="fld-top"><label for="f-content">Conteúdo</label><code>utm_content</code></div>
+        <input type="text" id="f-content" data-p="content" placeholder="video-depoimento-v2" autocomplete="off" spellcheck="false">
+        <div class="fhint" id="h-content"></div>
+      </div>
+      <div class="fld">
+        <div class="fld-top"><label for="f-term">Termo</label><code>utm_term</code></div>
+        <input type="text" id="f-term" data-p="term" placeholder="público ou palavra-chave" autocomplete="off" spellcheck="false">
+        <div class="fhint" id="h-term"></div>
+      </div>
+      <div class="fld">
+        <div class="fld-top"><label for="f-id">ID da campanha</label><code>utm_id</code></div>
+        <input type="text" id="f-id" data-p="id" placeholder="Opcional, usado nas importações de dados do GA4" autocomplete="off" spellcheck="false">
+        <div class="fhint" id="h-id"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-title">Variações</div>
+      <div class="fld">
+        <div class="fld-top"><label for="bulkField">Criar um link para cada</label></div>
+        <select id="bulkField">
+          <option value="content">Conteúdo (utm_content), por exemplo um por anúncio</option>
+          <option value="term">Termo (utm_term), por exemplo um por público</option>
+          <option value="source">Origem (utm_source), por exemplo um por influenciador</option>
+        </select>
+      </div>
+      <div class="fld">
+        <textarea id="bulkLines" class="mono" placeholder="Um valor por linha&#10;video-depoimento&#10;carrossel-beneficios&#10;estatico-oferta" spellcheck="false"></textarea>
+        <div class="fhint">Todo o resto vem dos parâmetros acima.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-title">Regras de limpeza</div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="r-lower" checked><span>Deixar tudo minúsculo<small>O GA4 conta "Facebook" e "facebook" como duas origens diferentes.</small></span></label>
+        <label class="check"><input type="checkbox" id="r-accents" checked><span>Remover acentos<small>"promoção" vira "promocao".</small></span></label>
+        <label class="check"><input type="checkbox" id="r-spaces" checked><span>Trocar espaços pelo separador</span></label>
+        <label class="check"><input type="checkbox" id="r-special" checked><span>Remover caracteres especiais<small>Mantém letras, números, hífens, underlines e pontos.</small></span></label>
+      </div>
+      <div class="sub">Separador</div>
+      <div class="seg c2" id="sepSeg">
+        <button class="tool" data-v="-">Hífen  ( - )</button>
+        <button class="tool active" data-v="_">Underline  ( _ )</button>
+      </div>
+      <div class="hint">Valores dinâmicos como <code style="font-family:var(--font-mono);color:#c9a86a">{{ad.name}}</code> nunca são alterados por essas regras. Seus ajustes e sua biblioteca ficam salvos neste navegador.</div>
+    </div>
+  </aside>
+</div>
+
+<datalist id="dl-source">
+  <option value="facebook"><option value="instagram"><option value="google"><option value="youtube"><option value="tiktok">
+  <option value="linkedin"><option value="bing"><option value="newsletter"><option value="whatsapp"><option value="pinterest">
+</datalist>
+<datalist id="dl-medium">
+  <option value="paid_social"><option value="cpc"><option value="paid_video"><option value="display"><option value="email">
+  <option value="social"><option value="affiliate"><option value="referral"><option value="sms"><option value="push"><option value="organic">
+</datalist>
+<datalist id="dl-objective">
+  <option value="leads"><option value="sales"><option value="traffic"><option value="awareness"><option value="engagement"><option value="app">
+</datalist>
+<datalist id="dl-funnel"><option value="tofu"><option value="mofu"><option value="bofu"></datalist>
+<datalist id="dl-audience">
+  <option value="broad"><option value="lookalike"><option value="interests"><option value="remarketing"><option value="customers">
+</datalist>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const PARAMS = ['source','medium','campaign','content','term','id'];
+const DESC = {
+  source:'De onde veio o clique: a plataforma, o site ou a lista.',
+  medium:'O tipo de canal. É o que o GA4 mais usa para agrupar o tráfego em canais.',
+  campaign:'A campanha ou ação. Mantenha o padrão entre as plataformas para conseguir comparar resultado.',
+  content:'O que foi clicado: o anúncio, o criativo ou o link. Útil para comparar criativos.',
+  term:'O público, o conjunto de anúncios ou a palavra-chave por trás do clique.',
+  id:'Um ID para a campanha. Permite cruzar os dados do GA4 com custo ou com outros sistemas.'
+};
+
+/* ---------- Presets ---------- */
+const META_TOKENS = ['{{campaign.name}}','{{campaign.id}}','{{adset.name}}','{{adset.id}}','{{ad.name}}','{{ad.id}}','{{placement}}','{{site_source_name}}'];
+const GOOGLE_TOKENS = ['{campaignid}','{adgroupid}','{creative}','{keyword}','{matchtype}','{network}','{device}'];
+const TIKTOK_TOKENS = ['__CAMPAIGN_NAME__','__CAMPAIGN_ID__','__AID_NAME__','__AID__','__CID_NAME__','__CID__','__PLACEMENT__'];
+const PRESETS = {
+  meta:{ label:'Meta Ads', source:'facebook', medium:'paid_social', tokens:META_TOKENS,
+    dyn:{ campaign:'{{campaign.name}}', term:'{{adset.name}}', content:'{{ad.name}}', id:'{{campaign.id}}' },
+    note:'Cole a versão só com os parâmetros no campo "Parâmetros de URL" do anúncio, não no URL do site. A Meta preenche os valores {{ }} quando alguém clica.' },
+  google:{ label:'Google Ads', source:'google', medium:'cpc', tokens:GOOGLE_TOKENS,
+    dyn:{ term:'{keyword}', content:'{creative}', id:'{campaignid}' },
+    note:'Mantenha a marcação automática ligada no Google Ads: o GA4 usa o gclid para o tráfego do Google Ads, e as UTMs servem principalmente para outras ferramentas, como o CRM. Cole a versão só com os parâmetros no "Sufixo do URL final" da campanha.' },
+  youtube:{ label:'YouTube Ads', source:'youtube', medium:'paid_video', tokens:GOOGLE_TOKENS,
+    dyn:{ content:'{creative}', id:'{campaignid}' },
+    note:'Campanhas de YouTube rodam pelo Google Ads, então vale a mesma recomendação de marcação automática. Origem "youtube" com mídia paga cai em Vídeo pago.' },
+  tiktok:{ label:'TikTok Ads', source:'tiktok', medium:'paid_social', tokens:TIKTOK_TOKENS,
+    dyn:{ campaign:'__CAMPAIGN_NAME__', term:'__AID_NAME__', content:'__CID_NAME__', id:'__CAMPAIGN_ID__' },
+    note:'Adicione na seção de parâmetros de URL do anúncio. O TikTok troca os valores __ __ pelos nomes reais quando alguém clica.' },
+  linkedin:{ label:'LinkedIn Ads', source:'linkedin', medium:'paid_social', note:'Escreva os nomes de campanha e de conteúdo à mão, seguindo a mesma convenção usada nas outras plataformas.' },
+  microsoft:{ label:'Microsoft Ads', source:'bing', medium:'cpc', note:'O Microsoft Ads também marca links automaticamente com o msclkid. Use UTMs para o CRM também receber os dados da campanha.' },
+  email:{ label:'E-mail', source:'newsletter', medium:'email', note:'Use o nome da lista ou da automação como origem, por exemplo "newsletter" ou "fluxo-onboarding", e o assunto ou o bloco do e-mail como conteúdo.' },
+  whatsapp:{ label:'WhatsApp', source:'whatsapp', medium:'social', note:'Bom para links enviados em listas de transmissão ou grupos. Sem UTM, boa parte desses cliques aparece no GA4 como Direto.' },
+  organic:{ label:'Social orgânico', source:'instagram', medium:'social', note:'Use em link da bio, posts e stories. Troque a origem pela rede em que você está publicando.' },
+  influencer:{ label:'Influenciador', source:'', medium:'affiliate', note:'Use o @ do criador como origem, por exemplo "joana-silva". A mídia "affiliate" agrupa essas visitas no canal Afiliados, separado dos seus próprios posts.' },
+  qr:{ label:'QR / offline', source:'flyer', medium:'qr', note:'O GA4 não tem canal padrão para tráfego offline, então essas visitas aparecem como Não atribuído. Crie um grupo de canais personalizado no GA4 para a mídia "qr" e reporte separadamente.' },
+  custom:{ label:'Personalizado', source:null, medium:null, note:'' }
+};
+
+/* ---------- GA4 default channel group (simplified) ---------- */
+const SOCIAL = ['facebook','fb','m.facebook.com','l.facebook.com','lm.facebook.com','instagram','ig','l.instagram.com','linkedin','lnkd.in','tiktok','twitter','t.co','x','pinterest','reddit','snapchat','whatsapp','threads','messenger','quora','tumblr','vk','discord','telegram'];
+const SEARCH = ['google','bing','yahoo','duckduckgo','baidu','yandex','ecosia','naver','msn','aol','search.yahoo.com'];
+const VIDEO = ['youtube','vimeo','twitch','dailymotion','wistia','m.youtube.com'];
+const SHOPPING = ['shopping','google shopping','amazon','ebay','etsy','shopify','mercadolivre','mercado livre','walmart'];
+const inList = (v, list) => list.some(s => v === s || v.startsWith(s + '.') || v.endsWith('.' + s) || v.includes('.' + s + '.'));
+const PAID = /^(.*cp.*|ppc|retargeting|paid.*)$/;
+const TOKEN_RE = /(\{\{[^}]+\}\}|\{[^}]+\}|__[A-Z_]+__)/g;
+const hasToken = (v) => new RegExp(TOKEN_RE.source).test(v);
+
+function predictChannel(src, med, camp){
+  const s = (src || '').toLowerCase().trim(), m = (med || '').toLowerCase().trim(), c = (camp || '').toLowerCase();
+  if (!s && !m) return null;
+  if (hasToken(src) && /site_source_name/.test(src)){
+    return { name:'Social pago ou Outras formas pagas', bad:false, why:'A Meta envia fb ou ig para Facebook e Instagram, que o GA4 coloca em Social pago. Messenger (msg) e Audience Network (an) não estão na lista de redes sociais do GA4 e caem em Outras formas pagas.' };
+  }
+  if (hasToken(src) || hasToken(med)) return { name:'Depende do valor da plataforma', bad:false, why:'A origem ou a mídia é preenchida na hora do clique, então o canal depende do que a plataforma enviar.' };
+  const paid = PAID.test(m);
+  const shopCamp = /^(.*(([^a-df-z]|^)shop|shopping).*)$/.test(c);
+  if (c.includes('cross-network')) return { name:'Rede cruzada', why:'O nome da campanha contém "cross-network".' };
+  if ((inList(s, SHOPPING) || shopCamp) && paid) return { name:'Shopping pago', why:'Origem ou nome de campanha de shopping, com mídia paga.' };
+  if (inList(s, SEARCH) && paid) return { name:'Pesquisa paga', why:`"${s}" é um buscador e "${m}" conta como mídia paga.` };
+  if (inList(s, SOCIAL) && paid) return { name:'Social pago', why:`"${s}" está na lista de redes sociais do GA4 e "${m}" conta como mídia paga.` };
+  if (inList(s, VIDEO) && paid) return { name:'Vídeo pago', why:`"${s}" é um site de vídeo e "${m}" conta como mídia paga.` };
+  if (['display','banner','expandable','interstitial','cpm'].includes(m)) return { name:'Display', why:`O GA4 lê a mídia "${m}" como publicidade de display.` };
+  if (paid) return { name:'Outras formas pagas', bad:true, why:`"${m}" conta como paga, mas o GA4 não reconhece "${s || '(vazio)'}" como origem de busca, social, vídeo ou shopping. Confira a grafia da origem.` };
+  if (inList(s, SHOPPING) || shopCamp) return { name:'Shopping orgânico', why:'Origem ou nome de campanha de shopping sem mídia paga.' };
+  if (inList(s, SOCIAL) || ['social','social-network','social-media','sm','social network','social media'].includes(m)){
+    const hint = /social|paid|ads?$/.test(m) && !paid && m !== 'social' ? ' Se esta for uma campanha paga, a mídia precisa começar com "paid" ou conter "cp", por exemplo "paid_social" ou "cpc".' : '';
+    return { name:'Social orgânico', bad:!!hint, why:`O GA4 reconhece "${s}" ou a mídia "${m}" como social, sem sinal de mídia paga.` + hint };
+  }
+  if (inList(s, VIDEO) || /video/.test(m)) return { name:'Vídeo orgânico', why:'Origem de vídeo ou mídia que contém "video".' };
+  if (inList(s, SEARCH) || m === 'organic') return { name:'Pesquisa orgânica', why:'Origem de buscador ou mídia "organic".' };
+  if (['referral','app','link'].includes(m)) return { name:'Referência', why:`O GA4 lê a mídia "${m}" como referência.` };
+  if (/^(email|e-mail|e_mail|e mail)$/.test(s) || /^(email|e-mail|e_mail|e mail)$/.test(m)) return { name:'E-mail', why:'A origem ou a mídia é "email".' };
+  if (m === 'affiliate') return { name:'Afiliados', why:'A mídia é "affiliate".' };
+  if (m === 'audio') return { name:'Áudio', why:'A mídia é "audio".' };
+  if (s === 'sms' || m === 'sms') return { name:'SMS', why:'A origem ou a mídia é "sms".' };
+  if (/push$/.test(m) || /mobile|notification/.test(m) || s === 'firebase') return { name:'Notificações push para dispositivos móveis', why:'A mídia aponta para notificações push.' };
+  return { name:'Não atribuído', bad:true, why:`O GA4 não reconhece a combinação "${s || '(vazio)'}" / "${m || '(vazio)'}". Essas visitas vão aparecer como Não atribuído, a menos que você crie um grupo de canais personalizado ou use uma mídia padrão como paid_social, cpc, email ou social.` };
+}
+
+/* ---------- State ---------- */
+const STORE = 'utm-builder:v1', LIB_STORE = 'utm-builder:lib:v1';
+let st = {
+  base:'', preset:'custom', p:{ source:'', medium:'', campaign:'', content:'', term:'', id:'' },
+  useParts:false, parts:{ brand:'', objective:'', funnel:'', offer:'', audience:'', geo:'', date:'' },
+  rules:{ lower:true, accents:true, spaces:true, special:true }, sep:'_',
+  bulkField:'content', bulkLines:''
+};
+let lib = [];
+let lastField = 'campaign';
+let current = null; // computed result
+
+function load(){
+  try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s) st = { ...st, ...s, p:{ ...st.p, ...s.p }, parts:{ ...st.parts, ...s.parts }, rules:{ ...st.rules, ...s.rules } }; } catch(_) {}
+  try { const l = JSON.parse(localStorage.getItem(LIB_STORE) || '[]'); if (Array.isArray(l)) lib = l; } catch(_) {}
+}
+let saveT;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch(_) {} }, 250);
+}
+function saveLib(){ try { localStorage.setItem(LIB_STORE, JSON.stringify(lib)); } catch(_) { toast('Não foi possível salvar a biblioteca neste navegador.', true); } }
+
+/* ---------- Cleanup ---------- */
+function cleanPlain(v){
+  let x = v;
+  const sep = st.sep;
+  if (st.rules.accents) x = x.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (st.rules.lower) x = x.toLowerCase();
+  if (st.rules.spaces) x = x.replace(/\s+/g, sep);
+  if (st.rules.special) x = x.replace(/[^A-Za-z0-9_\-.\s]/g, '');
+  x = x.replace(/_{2,}/g, '_').replace(/-{2,}/g, '-');
+  return x;
+}
+function clean(v){
+  v = String(v || '').trim();
+  if (!v) return '';
+  const parts = v.split(TOKEN_RE);
+  let out = parts.map((seg, i) => i % 2 === 1 ? seg : cleanPlain(seg)).join('');
+  out = out.replace(/^[_\-.\s]+|[_\-.\s]+$/g, '');
+  return out;
+}
+function buildCampaign(){
+  const order = ['brand','objective','funnel','offer','audience','geo','date'];
+  return order.map(k => {
+    let v = st.parts[k] || '';
+    if (k === 'date' && v) v = v.replace('-', '');
+    return clean(v);
+  }).filter(Boolean).join(st.sep);
+}
+
+/* ---------- URL building ---------- */
+const enc = (v) => encodeURIComponent(v).replace(/%7B/gi,'{').replace(/%7D/gi,'}');
+function parseBase(raw){
+  raw = (raw || '').trim();
+  if (!raw) return { error:'empty' };
+  let fixed = false, u;
+  try { u = new URL(raw); } catch(_) {
+    try { u = new URL('https://' + raw); fixed = true; } catch(__) { return { error:'invalid' }; }
+  }
+  if (!/^https?:$/.test(u.protocol)) return { error:'protocol' };
+  if (!u.hostname.includes('.') && u.hostname !== 'localhost') return { error:'invalid' };
+  const removed = [];
+  const keep = [];
+  for (const [k, v] of u.searchParams){
+    if (/^utm_/i.test(k)) removed.push(k); else keep.push([k, v]);
+  }
+  const hash = u.hash;
+  const origin = u.origin + u.pathname;
+  const keptQuery = keep.map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+  return { origin, keptQuery, hash, fixed, removed, http:u.protocol === 'http:' };
+}
+function paramList(values){
+  return PARAMS.filter(p => values[p]).map(p => ['utm_' + p, values[p]]);
+}
+function buildUrl(b, values){
+  const list = paramList(values);
+  const qs = list.map(([k, v]) => `${k}=${enc(v)}`).join('&');
+  const query = [b.keptQuery, qs].filter(Boolean).join('&');
+  return { url:b.origin + (query ? '?' + query : '') + b.hash, params:qs, list };
+}
+
+/* ---------- Compute + render ---------- */
+function compute(){
+  const raw = { ...st.p };
+  if (st.useParts) raw.campaign = buildCampaign();
+  const vals = {};
+  for (const p of PARAMS) vals[p] = st.useParts && p === 'campaign' ? raw.campaign : clean(raw[p]);
+  const b = parseBase(st.base);
+  const res = { raw, vals, base:b, ok:false };
+  if (!b.error && vals.source && vals.medium) Object.assign(res, buildUrl(b, vals), { ok:true });
+  res.channel = predictChannel(vals.source, vals.medium, vals.campaign);
+  res.checks = runChecks(res);
+  return res;
+}
+function runChecks(r){
+  const c = [];
+  const b = r.base;
+  if (b.error === 'empty') c.push(['err','Informe o endereço da página em que a pessoa deve cair.']);
+  else if (b.error) c.push(['err','O endereço da página não é válido. Ele deve parecer com <code>https://seusite.com.br/pagina</code>.']);
+  else {
+    if (b.fixed) c.push(['info','O endereço estava sem <code>https://</code>, então ele foi adicionado automaticamente.']);
+    if (b.http) c.push(['warn','O endereço usa <code>http</code>. Use <code>https</code> para evitar redirecionamentos que derrubam os parâmetros.']);
+    if (b.removed.length) c.push(['warn',`O endereço já tinha ${b.removed.map(k => `<code>${esc(k)}</code>`).join(', ')}. Foram substituídos pelos valores abaixo.`]);
+    if (b.hash) c.push(['info','O endereço tem um trecho com <code>#</code>. Ele foi mantido no final, depois dos parâmetros, para o rastreamento continuar funcionando.']);
+  }
+  if (!r.vals.source) c.push(['err','Origem é obrigatória. Sem ela o GA4 não consegue atribuir a visita.']);
+  if (!r.vals.medium) c.push(['err','Mídia é obrigatória. É ela que define em qual canal a visita entra.']);
+  if (!r.vals.campaign) c.push(['warn','Coloque um nome de campanha para conseguir comparar resultado entre plataformas.']);
+  const changed = PARAMS.filter(p => !(st.useParts && p === 'campaign') && (st.p[p] || '').trim() && clean(st.p[p]) !== st.p[p].trim());
+  if (changed.length) c.push(['info',`As regras de limpeza ajustaram ${changed.map(p => `<code>utm_${p}</code>`).join(', ')}. Veja o aviso "Enviado como" embaixo de cada campo.`]);
+  if (!st.rules.lower && PARAMS.some(p => /[A-Z]/.test((r.vals[p] || '').replace(TOKEN_RE, '')))) c.push(['warn','Alguns valores têm letra maiúscula. O GA4 diferencia maiúscula de minúscula, então "Facebook" e "facebook" são contados separadamente.']);
+  if (r.channel && r.channel.bad && r.channel.name === 'Não atribuído') c.push(['warn','O GA4 não vai colocar este link em um canal padrão. Veja a observação do canal.']);
+  if (r.channel && r.channel.bad && r.channel.name === 'Outras formas pagas') c.push(['warn','A origem não é reconhecida para um canal pago. Veja a observação do canal.']);
+  if (r.channel && r.channel.bad && r.channel.name === 'Social orgânico') c.push(['warn','A mídia parece de campanha paga, mas o GA4 vai contar como orgânica. Use <code>paid_social</code> ou <code>cpc</code>.']);
+  if (r.vals.campaign && r.vals.campaign.length > 100) c.push(['warn','O nome da campanha está muito longo. Acima de uns 100 caracteres o relatório fica difícil de ler.']);
+  if (r.url && r.url.length > 2000) c.push(['warn','O link passou de 2.000 caracteres. Algumas plataformas e navegadores podem cortar.']);
+  const tokens = PARAMS.some(p => hasToken(r.vals[p] || ''));
+  if (tokens) c.push(['info','Este link tem valores dinâmicos. Eles só funcionam dentro da plataforma de anúncios que os preenche, não se você abrir o link por conta própria.']);
+  if (st.preset === 'google' || st.preset === 'youtube') c.push(['info','Mantenha a marcação automática do Google Ads ligada. As UTMs aqui são complemento, não substituto.']);
+  if (!c.some(x => x[0] === 'err' || x[0] === 'warn')) c.unshift(['ok','Pronto para usar.']);
+  return c;
+}
+
+function colorValue(v){
+  return v.split(TOKEN_RE).map((seg, i) => i % 2 === 1 ? `<span class="t">${esc(seg)}</span>` : esc(seg)).join('');
+}
+function render(){
+  const r = current = compute();
+  // URL box
+  const box = $('#urlBox');
+  if (r.ok){
+    box.classList.remove('placeholder');
+    const b = r.base;
+    let html = `<span class="b">${esc(b.origin)}</span>`;
+    const kept = b.keptQuery ? b.keptQuery.split('&') : [];
+    let first = true;
+    for (const kv of kept){ html += `<span class="p">${first ? '?' : '&amp;'}</span><span class="b">${esc(kv)}</span>`; first = false; }
+    for (const [k, v] of r.list){
+      html += `<span class="p">${first ? '?' : '&amp;'}</span><span class="k">${k}</span><span class="p">=</span><span class="v">${colorValue(enc(v))}</span>`;
+      first = false;
+    }
+    if (b.hash) html += `<span class="b">${esc(b.hash)}</span>`;
+    box.innerHTML = html;
+    $('#len').textContent = `${r.url.length} caracteres`;
+  } else {
+    box.classList.add('placeholder');
+    box.textContent = 'Informe o endereço da página e a origem, a mídia e a campanha para ver seu link aqui.';
+    $('#len').textContent = '';
+  }
+  ['#btnCopy','#btnCopyParams','#btnSave'].forEach(s => $(s).disabled = !r.ok);
+
+  // State
+  const errs = r.checks.filter(x => x[0] === 'err').length, warns = r.checks.filter(x => x[0] === 'warn').length;
+  const stEl = $('#state');
+  stEl.dataset.s = errs ? 'err' : warns ? 'warn' : 'ok';
+  $('#stateLabel').textContent = errs ? `${errs>1?'Faltam':'Falta'} ${errs} ${errs>1?'itens':'item'}` : warns ? `Pronto, com ${warns} ponto${warns>1?'s':''} para revisar` : 'Pronto para usar';
+
+  // Anatomy
+  $('#anat').innerHTML = PARAMS.map(p => {
+    const v = r.vals[p];
+    return `<div class="anat-row"><div class="anat-k">utm_${p}</div>
+      <div class="anat-v${v ? '' : ' empty'}">${v ? colorValue(v) : (p === 'source' || p === 'medium' ? 'Obrigatório' : 'Não usado')}</div>
+      <div class="anat-d">${DESC[p]}</div></div>`;
+  }).join('');
+
+  // Channel
+  const ch = r.channel;
+  $('#channel').innerHTML = ch
+    ? `<div class="lbl">Onde o GA4 provavelmente vai agrupar este tráfego</div><div class="name${ch.bad ? ' bad' : ''}">${esc(ch.name)}</div><p>${esc(ch.why)}</p>`
+    : `<div class="lbl">Onde o GA4 provavelmente vai agrupar este tráfego</div><div class="name" style="color:var(--ink-soft)">Aguardando origem e mídia</div><p>O canal é estimado pelas regras de canal padrão do GA4, que dependem sobretudo desses dois campos.</p>`;
+
+  // Checks
+  $('#checks').innerHTML = r.checks.map(([k, t]) => `<li class="${k}"><span>${t}</span></li>`).join('');
+
+  // Field hints
+  for (const p of PARAMS){
+    const h = $('#h-' + p);
+    const raw = (st.p[p] || '').trim();
+    if (p === 'campaign' && st.useParts){ h.className = 'fhint'; h.textContent = 'Montado pelos campos acima.'; continue; }
+    if (raw && clean(raw) !== raw){ h.className = 'fhint changed'; h.innerHTML = `Enviado como <code>${esc(clean(raw))}</code>`; }
+    else { h.className = 'fhint'; h.textContent = ''; }
+  }
+  if (st.useParts){
+    $('#f-campaign').value = r.vals.campaign;
+    $('#built').innerHTML = r.vals.campaign ? colorValue(r.vals.campaign) : '<span style="color:#4d5563">Preencha pelo menos um campo</span>';
+  }
+
+  renderBulk(r);
+  $('#count').textContent = `${lib.length} link${lib.length === 1 ? '' : 's'} salvo${lib.length === 1 ? '' : 's'}`;
+  save();
+}
+
+/* ---------- Bulk ---------- */
+let bulkRows = [];
+function renderBulk(r){
+  const lines = st.bulkLines.split('\n').map(s => s.trim()).filter(Boolean);
+  const sec = $('#bulkSec');
+  bulkRows = [];
+  if (!lines.length){ sec.hidden = true; return; }
+  sec.hidden = false;
+  const f = st.bulkField;
+  $('#bulkHead').textContent = 'utm_' + f;
+  if (r.base.error){
+    $('#bulkCount').textContent = 'Informe um endereço de página válido para gerar as variações.';
+    $('#bulkBody').innerHTML = '';
+    return;
+  }
+  const seen = new Set();
+  for (const line of lines){
+    const vals = { ...r.vals, [f]:clean(line) };
+    if (!vals[f] || seen.has(vals[f])) continue;
+    seen.add(vals[f]);
+    if (!vals.source || !vals.medium) continue;
+    const built = buildUrl(r.base, vals);
+    bulkRows.push({ vals, url:built.url, params:built.params });
+  }
+  const missing = !r.vals.source && f !== 'source' || !r.vals.medium;
+  $('#bulkCount').textContent = missing ? 'Preencha origem e mídia para gerar as variações.' : `${bulkRows.length} link${bulkRows.length === 1 ? '' : 's'}`;
+  $('#bulkBody').innerHTML = bulkRows.map((row, i) => `<tr><td class="mono">${colorValue(row.vals[f])}</td><td class="mono url">${esc(row.url)}</td><td class="act"><button class="mini" data-bcopy="${i}">Copiar</button></td></tr>`).join('');
+}
+
+/* ---------- Library ---------- */
+function libEntry(vals, url){
+  const ch = predictChannel(vals.source, vals.medium, vals.campaign);
+  return { id:Math.random().toString(36).slice(2, 10), savedAt:new Date().toISOString(), url, ...vals, channel:ch ? ch.name : '' };
+}
+function renderLib(){
+  const q = $('#libSearch').value.trim().toLowerCase();
+  const rows = lib.filter(e => !q || [e.url, e.source, e.medium, e.campaign, e.content, e.term].join(' ').toLowerCase().includes(q));
+  const wrap = $('#libWrap');
+  if (!lib.length){
+    wrap.innerHTML = '<div class="lib-empty">Os links salvos aparecem aqui, para o time inteiro reaproveitar os mesmos nomes. Baixe o CSV para compartilhar ou colar na sua planilha de controle.</div>';
+  } else if (!rows.length){
+    wrap.innerHTML = '<div class="lib-empty">Nenhum link salvo corresponde a essa busca.</div>';
+  } else {
+    wrap.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>Campanha</th><th>Origem / mídia</th><th>Conteúdo</th><th>Canal no GA4</th><th>Salvo em</th><th></th></tr></thead><tbody>
+      ${rows.map(e => `<tr>
+        <td class="mono">${e.campaign ? colorValue(e.campaign) : '<span style="color:#4d5563">nenhuma</span>'}</td>
+        <td class="mono">${colorValue(e.source)} / ${colorValue(e.medium)}</td>
+        <td class="mono">${e.content ? colorValue(e.content) : ''}</td>
+        <td>${esc(e.channel || '')}</td>
+        <td style="white-space:nowrap">${new Date(e.savedAt).toLocaleDateString('pt-BR')}</td>
+        <td class="act"><button class="mini" data-lcopy="${e.id}">Copiar</button> <button class="mini" data-lload="${e.id}">Editar</button> <button class="mini danger" data-ldel="${e.id}" aria-label="Excluir">×</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }
+  $('#count').textContent = `${lib.length} link${lib.length === 1 ? '' : 's'} salvo${lib.length === 1 ? '' : 's'}`;
+}
+function addToLib(entries){
+  const existing = new Set(lib.map(e => e.url));
+  let added = 0;
+  for (const e of entries){ if (existing.has(e.url)) continue; lib.unshift(e); existing.add(e.url); added++; }
+  if (lib.length > 1000) lib.length = 1000;
+  saveLib(); renderLib();
+  return added;
+}
+function csv(rows){
+  const cols = ['saved_at','url','utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','ga4_channel'];
+  const q = (v) => `"${String(v ?? '').replace(/"/g,'""')}"`;
+  const body = rows.map(e => [e.savedAt || '', e.url, e.source, e.medium, e.campaign, e.content, e.term, e.id, e.channel].map(q).join(','));
+  return '\ufeff' + [cols.join(','), ...body].join('\r\n');
+}
+function download(text, name, type){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ---------- Clipboard + toast ---------- */
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch(_){
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch(__) {}
+    ta.remove(); return ok;
+  }
+}
+function flashBtn(btn, label){
+  const orig = btn.dataset.orig || btn.textContent;
+  btn.dataset.orig = orig; btn.textContent = label; btn.classList.add('done');
+  clearTimeout(btn._t); btn._t = setTimeout(() => { btn.textContent = orig; btn.classList.remove('done'); }, 1400);
+}
+let toastT;
+function toast(msg, err){
+  const t = $('#toast'); t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ---------- UI wiring ---------- */
+function buildPresets(){
+  $('#presets').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button class="tool" data-preset="${k}">${p.label}</button>`).join('');
+}
+function syncPresetUI(){
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('active', b.dataset.preset === st.preset));
+  const p = PRESETS[st.preset];
+  $('#presetNote').hidden = !p.note; $('#presetNote').textContent = p.note || '';
+  $('#dynWrap').hidden = !p.tokens;
+  $('#chips').innerHTML = (p.tokens || []).map(t => `<button class="chip" data-token="${esc(t)}">${esc(t)}</button>`).join('');
+}
+function syncInputs(){
+  $('#base').value = st.base;
+  for (const p of PARAMS) $('#f-' + p).value = st.p[p] || '';
+  for (const k of Object.keys(st.parts)) { const el = document.querySelector(`[data-part="${k}"]`); if (el) el.value = st.parts[k] || ''; }
+  $('#useParts').checked = st.useParts; $('#parts').hidden = !st.useParts; $('#f-campaign').readOnly = st.useParts;
+  $('#r-lower').checked = st.rules.lower; $('#r-accents').checked = st.rules.accents;
+  $('#r-spaces').checked = st.rules.spaces; $('#r-special').checked = st.rules.special;
+  document.querySelectorAll('#sepSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === st.sep));
+  $('#bulkField').value = st.bulkField; $('#bulkLines').value = st.bulkLines;
+  syncPresetUI();
+}
+
+$('#base').addEventListener('input', (e) => { st.base = e.target.value; render(); });
+for (const p of PARAMS){
+  const el = $('#f-' + p);
+  el.addEventListener('input', () => { if (st.useParts && p === 'campaign') return; st.p[p] = el.value; render(); });
+  el.addEventListener('focus', () => { lastField = p; });
+}
+document.querySelectorAll('[data-part]').forEach(el => el.addEventListener('input', () => { st.parts[el.dataset.part] = el.value; render(); }));
+$('#useParts').addEventListener('change', (e) => {
+  st.useParts = e.target.checked; $('#parts').hidden = !st.useParts; $('#f-campaign').readOnly = st.useParts;
+  if (!st.useParts) $('#f-campaign').value = st.p.campaign || '';
+  if (st.useParts && !st.parts.date){ const d = new Date(); st.parts.date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; $('#p-date').value = st.parts.date; }
+  render();
+});
+$('#presets').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-preset]'); if (!b) return;
+  st.preset = b.dataset.preset;
+  const p = PRESETS[st.preset];
+  if (p.source !== null){ st.p.source = p.source; $('#f-source').value = p.source; }
+  if (p.medium !== null){ st.p.medium = p.medium; $('#f-medium').value = p.medium; }
+  syncPresetUI(); render();
+  if (st.preset === 'influencer') $('#f-source').focus();
+});
+$('#btnDyn').addEventListener('click', () => {
+  const p = PRESETS[st.preset]; if (!p.dyn) return;
+  for (const [k, v] of Object.entries(p.dyn)){
+    if (k === 'campaign' && st.useParts){ st.useParts = false; $('#useParts').checked = false; $('#parts').hidden = true; $('#f-campaign').readOnly = false; }
+    st.p[k] = v; $('#f-' + k).value = v;
+  }
+  render(); toast('Valores dinâmicos adicionados. A plataforma preenche na hora do clique.');
+});
+$('#chips').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-token]'); if (!c) return;
+  let f = lastField;
+  if (f === 'campaign' && st.useParts) f = 'content';
+  const el = $('#f-' + f);
+  const start = el.selectionStart ?? el.value.length, end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, start) + c.dataset.token + el.value.slice(end);
+  st.p[f] = el.value; el.focus(); el.setSelectionRange(start + c.dataset.token.length, start + c.dataset.token.length);
+  render();
+});
+[['lower','#r-lower'],['accents','#r-accents'],['spaces','#r-spaces'],['special','#r-special']].forEach(([k, s]) =>
+  $(s).addEventListener('change', (e) => { st.rules[k] = e.target.checked; render(); }));
+$('#sepSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  st.sep = b.dataset.v;
+  document.querySelectorAll('#sepSeg button').forEach(x => x.classList.toggle('active', x === b));
+  render();
+});
+$('#bulkField').addEventListener('change', (e) => { st.bulkField = e.target.value; render(); });
+$('#bulkLines').addEventListener('input', (e) => { st.bulkLines = e.target.value; render(); });
+
+$('#btnCopy').addEventListener('click', async (e) => {
+  if (!current?.ok) return;
+  if (await copy(current.url)){ flashBtn(e.currentTarget, 'Copiado'); $('#urlBox').classList.remove('flash'); void $('#urlBox').offsetWidth; $('#urlBox').classList.add('flash'); }
+  else toast('Não foi possível copiar. Selecione o link e copie manualmente.', true);
+});
+$('#btnCopyParams').addEventListener('click', async (e) => {
+  if (!current?.ok) return;
+  if (await copy(current.params)) flashBtn(e.currentTarget, 'Copiado'); else toast('Não foi possível copiar.', true);
+});
+$('#btnSave').addEventListener('click', (e) => {
+  if (!current?.ok) return;
+  const n = addToLib([libEntry(current.vals, current.url)]);
+  if (n) flashBtn(e.currentTarget, 'Salvo'); else toast('Este link já está na biblioteca.');
+});
+$('#bulkBody').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-bcopy]'); if (!b) return;
+  if (await copy(bulkRows[+b.dataset.bcopy].url)) flashBtn(b, 'Copiado');
+});
+$('#bulkCopy').addEventListener('click', async (e) => {
+  if (!bulkRows.length) return;
+  if (await copy(bulkRows.map(r => r.url).join('\n'))) flashBtn(e.currentTarget, 'Copiado');
+});
+$('#bulkSave').addEventListener('click', (e) => {
+  if (!bulkRows.length) return;
+  const n = addToLib(bulkRows.map(r => libEntry(r.vals, r.url)));
+  flashBtn(e.currentTarget, n ? `${n} salvos` : 'Já salvos');
+});
+$('#bulkCsv').addEventListener('click', () => {
+  if (!bulkRows.length) return;
+  download(csv(bulkRows.map(r => libEntry(r.vals, r.url)).map(e => ({ ...e, savedAt:'' }))), 'utm-variacoes.csv', 'text/csv');
+});
+
+$('#libSearch').addEventListener('input', renderLib);
+$('#libCsv').addEventListener('click', () => {
+  if (!lib.length){ toast('A biblioteca está vazia.', true); return; }
+  download(csv(lib), 'utm-biblioteca.csv', 'text/csv'); toast('Biblioteca baixada em CSV.');
+});
+let clearArmed = false;
+$('#libClear').addEventListener('click', (e) => {
+  if (!lib.length) return;
+  if (!clearArmed){ clearArmed = true; e.currentTarget.textContent = 'Clique de novo para limpar'; setTimeout(() => { clearArmed = false; $('#libClear').textContent = 'Limpar biblioteca'; }, 3000); return; }
+  lib = []; saveLib(); renderLib(); clearArmed = false; e.currentTarget.textContent = 'Limpar biblioteca'; toast('Biblioteca limpa.');
+});
+$('#libWrap').addEventListener('click', async (e) => {
+  const c = e.target.closest('[data-lcopy]'), l = e.target.closest('[data-lload]'), d = e.target.closest('[data-ldel]');
+  if (c){ const en = lib.find(x => x.id === c.dataset.lcopy); if (en && await copy(en.url)) flashBtn(c, 'Copiado'); }
+  if (d){ lib = lib.filter(x => x.id !== d.dataset.ldel); saveLib(); renderLib(); toast('Link removido da biblioteca.'); }
+  if (l){
+    const en = lib.find(x => x.id === l.dataset.lload); if (!en) return;
+    try { const u = new URL(en.url); [...u.searchParams.keys()].filter(k => /^utm_/i.test(k)).forEach(k => u.searchParams.delete(k)); st.base = u.toString(); } catch(_) {}
+    for (const p of PARAMS) st.p[p] = en[p] || '';
+    st.useParts = false; st.preset = 'custom';
+    syncInputs(); render();
+    document.querySelector('.side').scrollTo({ top:0 });
+    toast('Link carregado no construtor.');
+  }
+});
+$('#btnResetAll').addEventListener('click', () => {
+  st.base = ''; st.p = { source:'', medium:'', campaign:'', content:'', term:'', id:'' };
+  st.parts = { brand:'', objective:'', funnel:'', offer:'', audience:'', geo:'', date:'' };
+  st.preset = 'custom'; st.bulkLines = '';
+  syncInputs(); render(); $('#base').focus();
+});
+
+/* ---------- Boot ---------- */
+load();
+buildPresets();
+syncInputs();
+render();
+renderLib();
+})();
+</script>
+</body>
+</html>
